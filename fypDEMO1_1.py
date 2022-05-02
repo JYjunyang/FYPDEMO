@@ -139,7 +139,7 @@ def Cleaning(text):
 def lemmatization(text):
     return [wn.lemmatize(word) for word in text]
 #endregion
-#region word2vec
+#region doc2vec
 def FeaturesExtraction():
     textWidget1 = Text(theRealTab1)
     textWidget1.grid(column=0,row=9,pady=5)
