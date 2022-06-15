@@ -4,16 +4,17 @@ from tkinter import filedialog
 #from ttkthemes import ThemedTk
 from pandastable import Table
 from PIL import Image, ImageTk
-from gensim.models import Doc2Vec
+from gensim.models import Word2Vec
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import train_test_split
-from sklearn.svm import LinearSVC
+from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier as KNN
 from sklearn.linear_model import LogisticRegression as LR
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 from sklearn import metrics
 import tkinter.ttk as ttk
+import numpy as np
 import matplotlib
 import gensim
 import logging
@@ -133,7 +134,7 @@ class fypMenu:
     
     tb3Label = Label(theRealTab3, text="It's the final step! Press the button below to get the "
                      +"accuracy of each model:\n Please take note: Data will be splitted into 70% for training, "
-                     +"10% for validation and 10% for testing.")
+                     +"10% for validation and 20% for testing.")
     
     imageDataTab3 = ImageTk.PhotoImage(
         Image.open("C://Users//USER//OneDrive//sem6//FYP2//fypVirtual//fypProject1//result.png").resize((50,50)))
@@ -177,16 +178,17 @@ class fypMenu:
         global buttonTokens, buttonFE, buttonResult, buttonPrecision, buttonRecall, buttonF1
         buttonTokens = Button(theRealTab1, text="We need to clean the data first: ", width=25, command=self.TriggerCleaning)#Data Preprocessing
         buttonFE = Button(theRealTab2, text="Features Extraction", width=16, command=self.FeaturesExtraction)#Feature Extraction
-        buttonResult = Button(theRealTab3, text='Accuracy', width=16, command=self.splittingData)
+        buttonResult = Button(theRealTab3, text='Accuracy', width=16)
         buttonPrecision = Button(theRealTab3, text='Precision', width=16)
         buttonRecall = Button(theRealTab3, text='Recall', width=16)
         buttonF1 = Button(theRealTab3, text='F1', width=16)
         global buttonSVM, buttonKNN, buttonLR, tb4inputLabel
         tb4inputLabel = Text(theRealTab4, width=70)
-        inputText = tb4inputLabel.get("1.0", "end-1c")
-        buttonSVM = Button(theRealTab4, text='SVM', width=16, command=lambda: self.SVMpredict(inputText))
-        buttonKNN = Button(theRealTab4, text='KNN', width=16, command=lambda: self.KNNpredict(inputText))
-        buttonLR = Button(theRealTab4, text='Logistic Regression', width=16, command=lambda: self.LRpredict(inputText))
+        # inputText = tb4inputLabel.get("1.0", "end-1c")
+        # self.inputText = inputText
+        buttonSVM = Button(theRealTab4, text='SVM', width=16, command=lambda: self.SVMpredict())
+        buttonKNN = Button(theRealTab4, text='KNN', width=16, command=lambda: self.KNNpredict())
+        buttonLR = Button(theRealTab4, text='Logistic Regression', width=16, command=lambda: self.LRpredict())
         
     def windowGeometry(self,window):
         window.deiconify()
@@ -204,9 +206,6 @@ class fypMenu:
 
         window.geometry("%dx%d+%d+%d" % (w, h, x, y))
         
-    # def wrap(self, string, length=30):
-    #     if len(string) >= 30:
-    #         return '\n'.join(textwrap.wrap(string, length))
         
     def openExcel(self):
         global dfOri
@@ -240,8 +239,6 @@ class fypMenu:
             tvPreview.heading(column, text=column)
         
         #setting the row in tree view
-        # dfRowTV = dfOri
-        # dfRowTV['full_text'] = dfRowTV['full_text'].apply(self.wrap)
         theTVlist = dfOri.to_numpy().tolist()
         for row in theTVlist:
             tvPreview.insert('','end',values=row)
@@ -257,9 +254,8 @@ class fypMenu:
         titleLabeltab2 = self.titleLabeltab2
         dfOri['full_text'] = dfOri['full_text'].apply(self.Cleaning)
         dfOri['full_text'] = dfOri['full_text'].apply(nltk.word_tokenize)
-        dfOri['full_text'] = dfOri['full_text'].apply(lambda x: [item for item in x if item not in self.stopwords])
         dfOri['full_text'] = dfOri['full_text'].apply(self.lemmatization)
-        # dfOri = dfOri[dfOri['Sentiment']!=0]
+        dfOri['full_text'] = dfOri['full_text'].apply(lambda x: [item for item in x if item not in self.stopwords])
         tvPreview2 = ttk.Treeview(self.datasetsResults)
         tvPreview2['column'] = list(dfOri.columns)
         tvPreview2['show'] = 'headings'
@@ -280,7 +276,8 @@ class fypMenu:
         text = text.replace('RT', '') #To remove the RT
         text = text.lower() #To lowercase
         text = re.sub(r'[^\w\s]', '' , text) #To remove punctuation
-        text = re.sub(r'[0-9]+', '' , text) #To remove number
+        text = re.sub(r'[0-9]', '' , text) #To remove number
+        text = re.sub(r'_', '', text) #To remove underscore
         return text
 
     def lemmatization(self,text):
@@ -291,6 +288,7 @@ class fypMenu:
         global titleLabeltab3
         global tb3Label
         global tb3LabelImage
+        global vectors, word2vec, finalw2v
         titleLabeltab3 = self.titleLabeltab3
         tb3Label = self.tb3Label
         tb3LabelImage = self.tb3LabelImage
@@ -299,37 +297,92 @@ class fypMenu:
         textWidget1.grid(column=0,row=9,pady=5)
         logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
     
-        #doc2vec model building
-        document = [gensim.models.doc2vec.TaggedDocument(words=row['full_text'],tags=[index]) for index, row in dfOri.iterrows()]
-        b1 = time.time()#time started
-        global doc2vec
-        doc2vec = Doc2Vec(documents=document,dm=1,vector_size=300,window=5,min_count=5,workers=8,negative=5,alpha=0.025,epochs=20)
-        train_time = time.time() - b1#time calculation
-        doc2vec.build_vocab(gensim.models.doc2vec.TaggedDocument(words=row['full_text'],tags=[index]) for index, row in dfOri.iterrows())
-        textWidget1.insert(INSERT, "The training time: {0}".format(train_time))
+        # #doc2vec model building
+        # document = [gensim.models.doc2vec.TaggedDocument(words=row['full_text'],tags=[index]) for index, row in dfOri.iterrows()]
+        # b1 = time.time()#time started
+        # global doc2vec
+        # doc2vec = Doc2Vec(documents=document,dm=1,vector_size=300,window=5,min_count=5,workers=8,negative=5,alpha=0.025,epochs=20)
+        # train_time = time.time() - b1#time calculation
+        # doc2vec.build_vocab(gensim.models.doc2vec.TaggedDocument(words=row['full_text'],tags=[index]) for index, row in dfOri.iterrows())
+        # textWidget1.insert(INSERT, "The training time: {0}".format(train_time))
         
-        #Example sentence used for FE
-        token_example1 = "the virus is horrible".split()
-        token_example1_vector = doc2vec.infer_vector(token_example1)
-        most_similar_word_result1 = doc2vec.dv.most_similar([token_example1_vector], topn=10)
-        #Inserting the top 10
-        textWidget1.insert(END, "\nThe top 10 most similar sentence example after feature extraction "
-                        +"is applied: \nExample of sentence used: the virus is horrible\n")
-        for result in most_similar_word_result1:
-            textWidget1.insert(END,dfOriReference.loc[result[0],'full_text'])
-            textWidget1.insert(END,"\n")
-            
+        # #Example sentence used for FE
+        # token_example1 = "the virus is horrible".split()
+        # token_example1_vector = doc2vec.infer_vector(token_example1)
+        # most_similar_word_result1 = doc2vec.dv.most_similar([token_example1_vector], topn=10)
+        # #Inserting the top 10
+        # textWidget1.insert(END, "\nThe top 10 most similar sentence example after feature extraction "
+        #                 +"is applied: \nExample of sentence used: the virus is horrible\n")
+        # for result in most_similar_word_result1:
+        #     textWidget1.insert(END,dfOriReference.loc[result[0],'full_text'])
+        #     textWidget1.insert(END,"\n")
+        
+        #the new word2vec model path
+        OUTPUT_FOLDER = 'C:/Users/USER/OneDrive/sem6/FYP2/'
+        
+        #splitting the data
+        dfOri['Sentiment'] =dfOri['Sentiment'].apply(self.targetTransform)#change the sentiment column first
+        X_train, X_test, y_train, y_test = train_test_split(dfOri[['full_text']],dfOri['Sentiment'],test_size=0.20,random_state=1,stratify=dfOri['Sentiment'])
+        word2vecFolder = OUTPUT_FOLDER + 'word2vec300' + '.model'
+        
+        starttime = time.time()
+        word2vec = Word2Vec(vector_size=300,window=5,min_count=5,workers=8,sg=1)
+        word2vec.build_vocab(dfOri['full_text'])
+        word2vec.train(dfOri['full_text'], total_examples=word2vec.corpus_count, epochs=20)
+        traintime = time.time() - starttime
+        word2vec.save(word2vecFolder)
+        finalw2v = Word2Vec.load(word2vecFolder)
+        
+        #Average the vector for each tweet
+        textWidget1.insert(INSERT, "The training time: {0}".format(traintime))
+        word2vec_filename = OUTPUT_FOLDER + 'train_review_word2vec.csv'
+        with open(word2vec_filename, 'w+') as word2vec_file:
+            for index, row in X_train.iterrows():
+                model_vector = (np.mean([finalw2v.wv[token] for token in row['full_text'] if token in word2vec.wv.key_to_index], axis=0)).tolist()
+                if index == 0:
+                    header = ",".join(str(ele) for ele in range(300))
+                    word2vec_file.write(header)
+                    word2vec_file.write("\n")
+                # Check if the line exists else it is vector of zeros
+                if type(model_vector) is list:  
+                    line1 = ",".join( [str(vector_element) for vector_element in model_vector] )
+                else:
+                    line1 = ",".join([str(0) for i in range(300)])
+                word2vec_file.write(line1)
+                word2vec_file.write('\n')
+        #Top 10 feature display
+        textWidget1.insert(END, "\nThe top 10 features from word2vec:\n")
+        index = 0
+        for feature in word2vec.wv.key_to_index:
+            textWidget1.insert(END, "\n{}. {}\n".format(index+1, feature))
+            index+=1
+            if index == 10:
+                break
+        word2vec_filename = r'{}'.format(word2vec_filename)
+        word2vecPD = pd.read_csv(word2vec_filename)
+        
+        #Average for the X_test
+        test_features_word2vec = []
+        for index, row in X_test.iterrows():
+            model_vector = (np.mean([finalw2v.wv[token] for token in row['full_text'] if token in word2vec.wv.key_to_index], axis=0)).tolist()
+            if type(model_vector) is list:
+                test_features_word2vec.append(model_vector)
+            else:
+                test_features_word2vec.append(np.array([0 for i in range(300)]))
+        
         titleLabeltab3.grid(column=0,row=0)
         tb3Label.grid(column=0,row=1)
         tb3LabelImage.grid(row = 1, column = 1, columnspan = 7, sticky = E)
         buttonResult.grid(column=0, row=2, pady=5)
-            
-    def splittingData(self):
-        dfOri['Sentiment'] =dfOri['Sentiment'].apply(self.targetTransform)
-        doc_vectors = []
-        doc_vectors = [doc2vec.infer_vector(row) for row in dfOri['full_text'].to_list()]
-        X_train, X_test, y_train, y_test = train_test_split(doc_vectors,dfOri['Sentiment'],test_size=0.20,random_state=1,stratify=dfOri['Sentiment'])
-        self.hyperparameterTuningAndEvaluating(X_train, X_test, y_train, y_test)
+        buttonResult.config(command = lambda: self.hyperparameterTuningAndEvaluating(word2vecPD, test_features_word2vec, y_train, y_test))
+        
+    # def splittingData(self):
+    #     # dfOri['Sentiment'] =dfOri['Sentiment'].apply(self.targetTransform)
+    #     # # doc_vectors = []
+    #     # # doc_vectors = [doc2vec.infer_vector(row) for row in dfOri['full_text'].to_list()]
+    #     # X_train, X_test, y_train, y_test = train_test_split(vectors,dfOri['Sentiment'],test_size=0.20,random_state=1,stratify=dfOri['Sentiment'])
+    #     # self.hyperparameterTuningAndEvaluating(X_train, X_test, y_train, y_test)
+    #     return "Nothing"
         
     def hyperparameterTuningAndEvaluating(self, X_train, X_test, y_train, y_test):
         global titleLabeltab4, tb4Label, tb4Label2, tb4Label3, SVMmodel, KNNmodel, LRmodel
@@ -337,14 +390,14 @@ class fypMenu:
         titleLabeltab4 = self.titleLabeltab4
         tb4Label2 = self.tb4Label2
         tb4Label3 = self.tb4Label3
-        # print('\nResult: ')    
-        # SVMparam_grid = {'gamma':[0.001,0.01,0.1,1,10,100],'C':[0.001,0.01,0.1,1,10,100]}
-        # SVMgrid_search = GridSearchCV(SVC(kernel='linear'),param_grid=SVMparam_grid,cv=3,n_jobs=-1,verbose=2)
-        # SVMgrid_search.fit(X_train, y_train)
-        # print("Best parameters: {}".format(SVMgrid_search.best_params_))
-        # print("Best score on train set: {:.2f}".format(SVMgrid_search.best_score_))
-        SVMmodel = LinearSVC(C=1)
-        # SVMmodel.set_params(**SVMgrid_search.best_params_)
+        print('\nResult: ')    
+        SVMparam_grid = {'C':[0.001,0.01,0.1,1,10,100]}
+        SVMgrid_search = GridSearchCV(SVC(kernel='linear'),param_grid=SVMparam_grid,cv=3,n_jobs=-1,verbose=2)
+        SVMgrid_search.fit(X_train, y_train)
+        print("Best parameters: {}".format(SVMgrid_search.best_params_))
+        print("Best score on train set: {:.2f}".format(SVMgrid_search.best_score_))
+        SVMmodel = SVC(kernel='linear')
+        SVMmodel.set_params(**SVMgrid_search.best_params_)
         SVMmodel.fit(X_train, y_train)
         SVMpredict = SVMmodel.predict(X_test)
         
@@ -358,18 +411,18 @@ class fypMenu:
         print("F1 of SVM: {:.2f}".format(SVMf1))
         print()
         
-        # KNNparam_grid = {'n_neighbors':[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],
-        #                  'weights':['uniform','distance'],
-        #                  'metric':['minkowski','euclidean','manhattan']}
-        # KNNgrid_search = GridSearchCV(KNN(), KNNparam_grid, cv=5, n_jobs=-1)
-        # KNNgrid_search.fit(X_train, y_train)
-        KNNmodel = KNN(n_neighbors=7, metric='cosine', weights='uniform', n_jobs=-1)
-        # KNNmodel.set_params(**KNNgrid_search.best_params_)
+        KNNparam_grid = {'n_neighbors':[4,7,10,13,15],
+                         'weights':['uniform','distance'],
+                         'metric':['minkowski','euclidean','manhattan','cosine']}
+        KNNgrid_search = GridSearchCV(KNN(), KNNparam_grid, cv=5, n_jobs=-1)
+        KNNgrid_search.fit(X_train, y_train)
+        KNNmodel = KNN(n_jobs=-1)
+        KNNmodel.set_params(**KNNgrid_search.best_params_)
         KNNmodel.fit(X_train, y_train)
         KNNpredict = KNNmodel.predict(X_test)
         
-        # print("Best parameters: {}".format(KNNgrid_search.best_params_))
-        # print("Best score on train set: {:.2f}".format(KNNgrid_search.best_score_))
+        print("Best parameters: {}".format(KNNgrid_search.best_params_))
+        print("Best score on train set: {:.2f}".format(KNNgrid_search.best_score_))
         KNNaccuracy = metrics.accuracy_score(y_test,KNNpredict)
         KNNprecision = metrics.precision_score(y_test,KNNpredict,average='macro')
         KNNrecall = metrics.recall_score(y_test,KNNpredict,average='macro')
@@ -380,18 +433,18 @@ class fypMenu:
         print("F1 of KNN: {:.2f}".format(KNNf1))
         print()
         
-        # LRparam_grid = {'penalty':['l1','l2','elasticnet','none'],
-        #                 'C':[0.001, 0.01, 0.1, 1, 10, 100],
-        #                 'solver':['newton-cg','lbfgs','liblinear','sag','saga']}
-        # LRgrid_search = GridSearchCV(LR(), LRparam_grid, cv=5, n_jobs=-1)
-        # LRgrid_search.fit(X_train, y_train)
-        LRmodel = LR(penalty='l2', C=1, solver='saga', n_jobs=-1)
-        # LRmodel.set_params(**LRgrid_search.best_params_)
+        LRparam_grid = {'penalty':['l1','l2','elasticnet','none'],
+                        'C':[0.001, 0.01, 0.1, 1, 10, 100],
+                        'solver':['newton-cg','lbfgs','liblinear','sag','saga']}
+        LRgrid_search = GridSearchCV(LR(), LRparam_grid, cv=5, n_jobs=-1)
+        LRgrid_search.fit(X_train, y_train)
+        LRmodel = LR(n_jobs=-1)
+        LRmodel.set_params(**LRgrid_search.best_params_)
         LRmodel.fit(X_train, y_train)
         LRpredict = LRmodel.predict(X_test)
         
-        # print("Best parameters: {}".format(LRgrid_search.best_params_))
-        # print("Best score on train set: {:.2f}".format(LRgrid_search.best_score_))
+        print("Best parameters: {}".format(LRgrid_search.best_params_))
+        print("Best score on train set: {:.2f}".format(LRgrid_search.best_score_))
         LRaccuracy = metrics.accuracy_score(y_test,LRpredict)
         LRprecision = metrics.precision_score(y_test,LRpredict,average='macro')
         LRrecall = metrics.recall_score(y_test,LRpredict,average='macro')
@@ -479,22 +532,46 @@ class fypMenu:
         tb4Label2.grid(row=4, column=1)
         tb4Label3.grid(row=4, column=0)
         
-    def SVMpredict(self,text):
-        textVector = doc2vec.infer_vector(text.split())
-        textVector = textVector.reshape(1,-1)
-        result = SVMmodel.predict(textVector)
+    def SVMpredict(self):
+        text = tb4inputLabel.get("1.0", "end-1c")
+        text = text.split()
+        textVector = (np.mean([finalw2v.wv[token] for token in text if token in finalw2v.wv.key_to_index], axis=0)).tolist()
+        if type(textVector) is list:
+            textVector = np.array(textVector)
+            textVector = textVector.reshape(1,-1)
+            result = SVMmodel.predict(textVector)
+        else:
+            textVector = np.array([0 for i in range(300)])
+            textVector = textVector.reshape(1,-1)
+            result = SVMmodel.predict(textVector)
         tb4Label2.config(text=result)
         
-    def KNNpredict(self,text):
-        textVector = doc2vec.infer_vector(text.split())
-        textVector = textVector.reshape(1,-1)
-        result = KNNmodel.predict(textVector)
+    def KNNpredict(self):
+        text = tb4inputLabel.get("1.0", "end-1c")
+        text = text.split()
+        textVector = (np.mean([finalw2v.wv[token] for token in text if token in finalw2v.wv.key_to_index], axis=0)).tolist()
+        if type(textVector) is list:
+            textVector = np.array(textVector)
+            textVector = textVector.reshape(1,-1)
+            result = KNNmodel.predict(textVector)
+        else:
+            textVector = np.array([0 for i in range(300)])
+            textVector = textVector.reshape(1,-1)
+            result = SVMmodel.predict(textVector)
         tb4Label2.config(text=result)
         
-    def LRpredict(self,text):
-        textVector = doc2vec.infer_vector(text.split())
-        textVector = textVector.reshape(1,-1)
-        result = LRmodel.predict(textVector)
+    def LRpredict(self):
+        text = tb4inputLabel.get("1.0", "end-1c")
+        text = text.split()
+        textVector = (np.mean([finalw2v.wv[token] for token in text if token in finalw2v.wv.key_to_index], axis=0)).tolist()
+        if type(textVector) is list:
+            textVector = np.array(textVector)
+            textVector = textVector.reshape(1,-1)
+            result = LRmodel.predict(textVector)
+        else:
+            textVector = np.array([0 for i in range(300)])
+            textVector = textVector.reshape(1,-1)
+            result = SVMmodel.predict(textVector)
         tb4Label2.config(text=result)
         
     def targetTransform(self,target):
